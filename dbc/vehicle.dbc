@@ -1,0 +1,5 @@
+BO_ 256 VehicleSpeed : 8 ECU1
+ SG_ Speed : 0|16@1+ (0.01,0) [0|655.35] "km/h" ECU2
+
+BO_ 257 EngineTemp : 8 ECU1
+ SG_ Temp : 16|8@1+ (1,-40) [-40|215] "degC" ECU2
