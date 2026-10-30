@@ -2,7 +2,8 @@ add_library(vcm_core STATIC
      logger.cpp 
      can_frame.cpp 
      can_socket.cpp 
-     signal_database.cpp 
+     signal_database.cpp
+     isotp_sender.cpp
 )
 
 target_include_directories(vcm_core PUBLIC ${CMAKE_SOURCE_DIR}/include)
