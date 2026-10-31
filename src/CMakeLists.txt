@@ -8,6 +8,11 @@ add_library(vcm_core STATIC
 
 target_include_directories(vcm_core PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
+if(ENABLE_TSAN)
+    target_compile_options(vcm_core PRIVATE -fsanitize=thread -g)
+    target_link_options(vcm_core INTERFACE -fsanitize=thread)
+endif()
+
 target_link_libraries(vcm_core PUBLIC 
     Threads::Threads 
     nlohmann_json::nlohmann_json

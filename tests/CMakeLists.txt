@@ -2,7 +2,9 @@ add_executable(vcm_tests
     test_logger.cpp
     test_signal_database.cpp
     test_isotp_sender.cpp
+    test_ring_buffer.cpp
 )
+
 
 target_link_libraries(vcm_tests PRIVATE 
     vcm_core 

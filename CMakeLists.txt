@@ -14,6 +14,7 @@ endif()
 # 修复了拼写：BUILD_TESTS
 option(BUILD_TESTS "build unit tests" ON)
 option(GENERATE_JSON "Run Python script to generate vehicle.json" OFF)
+option(ENABLE_TSAN "Enable ThreadSanitizer" OFF)
 
 find_package(Threads REQUIRED)
 
