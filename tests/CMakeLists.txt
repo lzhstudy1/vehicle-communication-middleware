@@ -3,6 +3,7 @@ add_executable(vcm_tests
     test_signal_database.cpp
     test_isotp_sender.cpp
     test_ring_buffer.cpp
+    test_Isotp_receive.cpp
 )
 
 
