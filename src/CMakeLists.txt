@@ -14,6 +14,11 @@ if(ENABLE_TSAN)
     target_link_options(vcm_core INTERFACE -fsanitize=thread)
 endif()
 
+if(ENABLE_COVERAGE)
+    target_compile_options(vcm_core PRIVATE --coverage)
+    target_link_options(vcm_core PRIVATE --coverage)
+endif()
+
 target_link_libraries(vcm_core PUBLIC 
     Threads::Threads 
     nlohmann_json::nlohmann_json

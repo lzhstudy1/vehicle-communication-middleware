@@ -18,8 +18,7 @@ class TestIsoTpReceive : public :: testing ::Test{
 
 //------1.单帧接收----
 TEST_F(TestIsoTpReceive, SingleFrameReceive){
-    IsoTpReceiver receiver(rx_socket,0x7F0,0x7F8);//rx_id我要接听什么标签的帧
-    //tx_id 我发送的数据需要什么id
+    IsoTpReceiver receiver(rx_socket,0x7F0,0x7F8);
     std::vector<uint8_t> payload(10,0);
     std::thread sender([this]{
         CanFrame frame{0};
@@ -99,8 +98,10 @@ TEST_F(TestIsoTpReceive,SNWrongTest){
     bool success = receiver.receive(payload,1000);
     
     EXPECT_FALSE(success);
+     sender.join();
+     EXPECT_TRUE(payload.empty());
     ASSERT_EQ(receiver.getState(),IsoTpReceiver::State::Error);
-    sender.join();
+   
 }
 
 //------4.溢出保护----
@@ -152,7 +153,7 @@ TEST_F(TestIsoTpReceive,ReceiverTimeout){
 //-----6端到端测试
 TEST_F(TestIsoTpReceive,EndToEnd){
     IsoTpReceiver receiver(rx_socket,0x7E0,0x7E8);
-    IsoTpSender sender(0x7E0,0x7E8,tx_socket);
+    IsoTpSender sender(tx_socket,0x7E0,0x7E8);
 
     std::vector<uint8_t> payload(20,0xAA);
     std::thread sender_thread([&]{

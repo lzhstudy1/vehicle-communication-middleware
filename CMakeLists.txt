@@ -15,6 +15,7 @@ endif()
 option(BUILD_TESTS "build unit tests" ON)
 option(GENERATE_JSON "Run Python script to generate vehicle.json" OFF)
 option(ENABLE_TSAN "Enable ThreadSanitizer" OFF)
+option(ENABLE_COVERAGE "Enable Coverage" OFF)
 
 find_package(Threads REQUIRED)
 

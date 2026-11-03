@@ -19,8 +19,10 @@ class IsoTpReceiver{//接收方
     private:
             static constexpr int MemoryPoolSize = 512;
             CanSocket& can_socket_;
-            uint32_t rx_id_;//接收到的是谁发的
-            uint32_t tx_id_;//我要发给谁
+            uint32_t rx_id_;
+            uint32_t tx_id_;
+            //rx_id我要接听什么标签的帧
+            //tx_id 我发送的数据需要什么id
             
             uint8_t buffer[MemoryPoolSize];//存放拼装的数据
             int total_length = 0;//总长度

@@ -18,7 +18,7 @@ class IsotpSenderTest : public ::testing::Test {
 //------1.单帧发送测试------
 TEST_F(IsotpSenderTest, SingleFrameSend){
     
-    IsoTpSender sender(0x7E0,0x7E8,tx_socket);
+    IsoTpSender sender(tx_socket,0x7E0,0x7E8);
     std::vector<uint8_t> payload = {0x10,0x20,0x31};
 
     ASSERT_TRUE(sender.send(payload));
@@ -36,7 +36,7 @@ TEST_F(IsotpSenderTest, SingleFrameSend){
 //------2.多帧发送测试------
 TEST_F(IsotpSenderTest, MultiFrameSend){
   
-    IsoTpSender sender(0x7E0,0x7E8,tx_socket);
+    IsoTpSender sender(tx_socket,0x7E0,0x7E8);
     std::vector<uint8_t> payload(12,0xBB);
 
     std::thread receiver_thread([this](){
@@ -65,16 +65,16 @@ TEST_F(IsotpSenderTest, MultiFrameSend){
 //------3.BS分块流控限制测试-----
 TEST_F(IsotpSenderTest,BSDivertSend){
 
-    IsoTpSender sender(0x7E0,0x7E8,tx_socket);
+    IsoTpSender sender(tx_socket,0x7E0,0x7E8);
     std::vector<uint8_t> payload(24,0xAB);
 
     std::thread receive_thread([this](){
-        CanFrame rx_frame;
+        CanFrame rx_frame{};
         if(rx_socket.receive(rx_frame,500)){
             EXPECT_EQ(rx_frame.data[0],0x10);
             EXPECT_EQ(rx_frame.data[1],24);
 
-            CanFrame fc_frame1;
+            CanFrame fc_frame1{};
             fc_frame1.id = 0x7E8;
             fc_frame1.dlc = 8;
             fc_frame1.data[0] = 0x30;
@@ -88,7 +88,10 @@ TEST_F(IsotpSenderTest,BSDivertSend){
             if(rx_socket.receive(rx_frame,500)){
                 EXPECT_EQ(rx_frame.data[0],0x22);
             }
-            CanFrame fc_frame2;
+            CanFrame unexpection_frame {};
+            bool got_more = rx_socket.receive(unexpection_frame,100);
+            EXPECT_FALSE(got_more);
+            CanFrame fc_frame2{};
             fc_frame2.id = 0x7E8;
             fc_frame2.dlc = 8;
             fc_frame2.data[0] = 0x30;
@@ -107,7 +110,7 @@ TEST_F(IsotpSenderTest,BSDivertSend){
 
 //------4.超时报错---
 TEST_F(IsotpSenderTest, TimeoutError){
-    IsoTpSender sender(0x7E0,0x7E8,tx_socket);
+    IsoTpSender sender(tx_socket,0x7E0,0x7E8);
     std::vector<uint8_t>payload(12,0xBB);
 
     std::thread receive_thread([this]{
@@ -122,7 +125,7 @@ TEST_F(IsotpSenderTest, TimeoutError){
 
 //-----5.溢出报错----
 TEST_F(IsotpSenderTest, OverflowError){
-    IsoTpSender sender(0x7E0,0x7E8,tx_socket);
+    IsoTpSender sender(tx_socket,0x7E0,0x7E8);
     std::vector<uint8_t>payload(12,0xBB);
 
     std::thread receive_thread([this]{

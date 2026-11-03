@@ -1,6 +1,6 @@
 #pragma once
 
-#include "can_frame.hpp"
+#include "vcm/can_frame.hpp"
 #include <linux/can.h>          // struct can_filter
 #include <string>
 #include <vector>
