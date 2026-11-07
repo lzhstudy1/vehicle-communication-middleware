@@ -4,6 +4,7 @@ add_executable(vcm_tests
     test_isotp_sender.cpp
     test_ring_buffer.cpp
     test_Isotp_receive.cpp
+    test_Uds_server.cpp
 )
 
 target_link_libraries(vcm_tests PRIVATE 

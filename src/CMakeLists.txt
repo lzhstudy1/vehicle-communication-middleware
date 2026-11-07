@@ -5,6 +5,7 @@ add_library(vcm_core STATIC
      signal_database.cpp
      isotp_sender.cpp
      IsoTpReceiver.cpp
+     uds_server.cpp
 )
 
 target_include_directories(vcm_core PUBLIC ${CMAKE_SOURCE_DIR}/include)
