@@ -1,9 +1,12 @@
 #include"vcm/uds_server.hpp"
+#include<fstream>//从底层硬件获得熵随机数
+#include<iostream>
 
 UdsServer::UdsServer(IsoTpSender& sender, IsoTpReceiver& receiver):
     sender(sender), receiver(receiver){};
 
 void UdsServer::handleRequest(const std::vector<uint8_t>& req){// 请求SID 子功能(可选) 数据
+    last_active_time = std::chrono::steady_clock::now();
     if(req.size() == 0) return;
     uint8_t sid = req[0];
     switch(sid){
@@ -16,9 +19,13 @@ void UdsServer::handleRequest(const std::vector<uint8_t>& req){// 请求SID 子�
         case 0x22 :
             handle_0x22(req);
             break;
+        case 0x27 :
+            handle_0x27(req);
+            break;
         default :
             sendNRC(sid, 0x11);
     }
+    return;
 }
 
 void UdsServer::registerReadDID(uint16_t did, std::function<std::vector<uint8_t>()> readFnc){
@@ -88,4 +95,146 @@ void UdsServer::handle_0x22(const std::vector<uint8_t>& req){
 void UdsServer::sendNRC(uint8_t sid, uint8_t nrc){
     std::vector<uint8_t> resp = {0x7F,sid,nrc};
     sender.send(resp);
+}
+
+uint32_t UdsServer::getRandNum(){
+    uint32_t seed = 0;
+    std::ifstream urandom("/dev/urandom",std::ios::in|std::ios::binary);
+    if(urandom){
+        urandom.read(reinterpret_cast<char*>(&seed),sizeof(seed));
+    }
+    return seed;
+}
+
+bool UdsServer::isLockout(){
+    if(failed_attempts < 3){
+        return false;
+    }
+
+    auto now = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - lockout_time).count();
+
+    if(duration < 10){
+        return true;
+    }else{
+        failed_attempts = 0;
+        return false;
+    }
+}
+
+void UdsServer::checkS3Timeout(){
+    if(session == Session::DEFAULT){
+        return;
+    }
+
+    auto now = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>
+    (now - last_active_time).count();
+
+    if(duration > 5000){
+        session = Session::DEFAULT;
+        current_level = SecurityLevel::LEVEL_1;
+        unlock_level1 = false;
+        unlock_level3 = false;
+        std::cout<<"[UDS] Session 3 timeout"<<std::endl;
+    }
+}
+
+void UdsServer::registerKeyAlgorithm(SecurityLevel level, std::function<uint32_t(uint32_t)> algo){
+    safeFnc[level] = algo;
+}
+
+void UdsServer::handle_0x27(const std::vector<uint8_t>& req){
+    if(req.size() < 2){
+        sendNRC(req[0],0x13);
+        return;
+    }
+
+    uint8_t sub_func = req[1];
+    bool is_req_seed = (sub_func % 2 != 0);//判断为奇数
+    SecurityLevel level;
+    if(sub_func == 0x01 || sub_func == 0x02){
+        level = SecurityLevel::LEVEL_1;
+    }else if(sub_func == 0x05 || sub_func == 0x06){
+        level = SecurityLevel::LEVEL_3;
+    }else{
+        sendNRC(req[0],0x12);
+        return;
+    }
+
+    if(isLockout()){
+        sendNRC(req[0],0x36);
+        return;
+    }
+    //请求种子
+    if(is_req_seed){
+        current_seed = getRandNum();
+        std::vector<uint8_t> resp;
+        resp.push_back(0x67);
+        resp.push_back(sub_func);
+        resp.push_back((current_seed >> 24) & 0xFF);
+        resp.push_back((current_seed >> 16) & 0xFF);
+        resp.push_back((current_seed >> 8) & 0xFF);
+        resp.push_back(current_seed & 0xFF);
+        sender.send(resp);
+        return;
+    }
+    //发送密钥
+    if(req.size() < 6){
+        sendNRC(req[0],0x13);
+        return;
+    }
+
+    if(current_seed == 0){
+        sendNRC(req[0],0x24);
+        return;
+    }
+    //提取发送的key
+    uint32_t received_key = 0;
+    for(size_t i = 2; i < req.size();i++){
+        received_key = (received_key << 8);
+        received_key |= req[i];
+    }
+    //找算法
+    auto it = safeFnc.find(level);
+    if(it == safeFnc.end()){
+        sendNRC(req[0],0x11);
+        return;
+    }
+    //通过算法计算到真实key
+    uint32_t expect_key = it->second(current_seed);
+
+    if(expect_key == received_key){
+        if(level == SecurityLevel::LEVEL_1) unlock_level1 = true;
+        if(level == SecurityLevel::LEVEL_3) unlock_level3 = true;
+        failed_attempts = 0;
+        current_seed = 0;
+        std::vector<uint8_t> resp = {0x67,sub_func};
+        sender.send(resp);
+    }else{
+        failed_attempts++;
+        if(failed_attempts < 3){
+            sendNRC(0x27,0x35);
+        }else if(failed_attempts == 3){
+            lockout_time = std::chrono::steady_clock::now();
+            sendNRC(0x27,0x36);
+            return;
+        }
+        current_seed = 0;
+    }
+}
+
+int UdsServer::getLockMessage(){
+    if(unlock_level1) return 1;
+    if(unlock_level3) return 3;
+    return 0;
+}
+void UdsServer::processLoop(){
+    while(is_running){
+        std::vector<uint8_t> req;
+        if(receiver.receive(req,500)){
+            handleRequest(req);
+        }
+        checkS3Timeout();
+    }
 }
