@@ -250,3 +250,120 @@ TEST_F(UdsServerTest, Handle_S3Timeout) {
     server.stop();
     if (ecu_thread.joinable()) ecu_thread.join();
 }
+
+//----10.0x2E 正常写入---
+TEST_F(UdsServerTest, Handle_0x2E_WriteValidDID) {
+    IsoTpReceiver ecu_rx(ecu_socket, 0x7E0, 0x7E8);
+    IsoTpSender ecu_tx(ecu_socket, 0x7E8, 0x7E0);
+    UdsServer server(ecu_tx, ecu_rx);
+
+    uint8_t current_speed = 0;
+    std::string saved_vin = "00000000000000000";
+    server.registerDIDWrite(0xF190, [&current_speed, &saved_vin](const std::vector<uint8_t>& data) -> bool {
+        if (current_speed != 0) {
+            return false; 
+        }
+        if (data.size() != 17) {
+            return false;
+        }
+        saved_vin = std::string(data.begin(), data.end());
+        return true; 
+    });
+
+    std::thread ecu_thread([&]{ server.processLoop(); });
+
+    sendRequestAndGetResponse(tester_socket, {0x10, 0x03});
+    auto seed_resp = sendRequestAndGetResponse(tester_socket, {0x27, 0x01});
+    server.registerKeyAlgorithm(UdsServer::SecurityLevel::LEVEL_1, [](uint32_t seed){ return seed; });
+    uint32_t seed = VectorToInt32(seed_resp);
+    std::vector<uint8_t> req_key = {0x27, 0x02};
+    Int32_ToVector(seed, req_key);
+    sendRequestAndGetResponse(tester_socket, req_key);
+
+    std::vector<uint8_t> write_req = {0x2E, 0xF1, 0x90};
+    std::string new_vin = "LSVAM4188E2100001";
+    write_req.insert(write_req.end(), new_vin.begin(), new_vin.end());
+
+    auto resp = sendRequestAndGetResponse(tester_socket, write_req);
+    EXPECT_EQ(resp[0], 0x6E);
+    EXPECT_EQ(saved_vin, new_vin); 
+
+    current_speed = 10;
+    auto resp_fail = sendRequestAndGetResponse(tester_socket, write_req);
+    EXPECT_EQ(resp_fail[0], 0x7F);
+    EXPECT_EQ(resp_fail[2], 0x22);
+    
+    server.stop();
+    ecu_thread.join();
+}
+
+//----11.0x2E非解锁写入---
+TEST_F(UdsServerTest, Handle_0x2E_WriteWithoutUnlock) {
+    IsoTpReceiver ecu_rx(ecu_socket, 0x7E0, 0x7E8);
+    IsoTpSender ecu_tx(ecu_socket, 0x7E8, 0x7E0);
+    UdsServer server(ecu_tx, ecu_rx);
+
+    uint8_t current_speed = 0;
+    std::string saved_vin = "00000000000000000";
+    server.registerDIDWrite(0xF190, [&current_speed,&saved_vin](const std::vector<uint8_t>& data) -> bool {
+        if(current_speed != 0){
+            return false;
+        }
+        if(data.size() != 17){
+            return false;
+        }
+        saved_vin = std::string(data.begin(), data.end());
+        return true; 
+     });
+
+     std::thread ecu_thread([&]{server.processLoop();});
+     std::vector<uint8_t> req = {0x2E,0xF1,0x90};
+     std::string new_vin = "LSVAM4188E2100001";
+     req.insert(req.end(), new_vin.begin(), new_vin.end());
+
+     auto resp = sendRequestAndGetResponse(tester_socket, req);
+     EXPECT_EQ(resp[0],0x7F);
+     EXPECT_EQ(resp[2],0x33);
+     server.stop();
+     ecu_thread.join();
+}
+
+//----12.0x31 启动与查结果
+TEST_F(UdsServerTest, Handle_0x31_FanRoutine) {
+    IsoTpReceiver ecu_rx(ecu_socket, 0x7E0, 0x7E8);
+    IsoTpSender ecu_tx(ecu_socket, 0x7E8, 0x7E0);
+    UdsServer server(ecu_tx, ecu_rx);
+
+    server.registerRouting(0x0203, [](uint8_t sub_func, const std::vector<uint8_t>& req_data)
+     -> std::optional<std::vector<uint8_t>> {
+        if (sub_func == 0x01) {
+            if(!req_data.empty()){
+                std::cout<<"参数为"<<req_data[0]<<std::endl;
+            }
+            return std::vector<uint8_t>{};
+        }
+        if (sub_func == 0x02) return std::vector<uint8_t>{};
+        if (sub_func == 0x03) return std::vector<uint8_t>{0x00}; 
+        return std::nullopt;
+    });
+
+    std::thread ecu_thread([&]{ server.processLoop(); });
+
+    auto resp1 = sendRequestAndGetResponse(tester_socket, {0x31, 0x01, 0x02, 0x03});
+    EXPECT_EQ(resp1[0], 0x71);
+    EXPECT_EQ(resp1[1], 0x01);
+    EXPECT_EQ(resp1.size(), 4); 
+
+    auto resp2 = sendRequestAndGetResponse(tester_socket, {0x31, 0x03, 0x02, 0x03});
+    EXPECT_EQ(resp2[0], 0x71);
+    EXPECT_EQ(resp2[1], 0x03);
+    EXPECT_EQ(resp2.size(), 5); 
+    EXPECT_EQ(resp2[4], 0x00);  
+
+    auto resp3 = sendRequestAndGetResponse(tester_socket, {0x31, 0x02, 0x02, 0x03});
+    EXPECT_EQ(resp3[0], 0x71);
+    EXPECT_EQ(resp3[1], 0x02);
+
+    server.stop();
+    if (ecu_thread.joinable()) ecu_thread.join();
+}

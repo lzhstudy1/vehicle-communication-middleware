@@ -7,6 +7,7 @@
 #include<vcm/IsoTpReceiver.hpp>
 #include<chrono>
 #include<functional>
+#include<optional>
 
 class UdsServer {
     public:
@@ -28,14 +29,18 @@ class UdsServer {
 
         void stop(){is_running = false;}
         void handleRequest(const std::vector<uint8_t>& req);
-        void registerReadDID(uint16_t did, std::function<std::vector<uint8_t>()> readFnc);
+        void registerReadDID(uint16_t did, std::function<std::vector<uint8_t>()> readFnc);//读函数
         void registerKeyAlgorithm(SecurityLevel level, std::function<uint32_t(uint32_t)> algo);
         int getLockMessage();
+        void registerRouting(uint16_t rid, std::function<std::optional<std::vector<uint8_t>>
+            (uint8_t sub_fnc, const std::vector<uint8_t>& req_data)> routing_func);
+        void registerDIDWrite(uint16_t did, std::function<bool(const std::vector<uint8_t>&)> write_func);//写函数
 
     private:
         IsoTpSender& sender;
         IsoTpReceiver& receiver;
         std::atomic<bool> is_running = {true};
+        std::atomic<bool> routing_running = {false};
         Session session = Session::DEFAULT;
         SecurityLevel current_level = SecurityLevel::LEVEL_1;
         bool unlock_level1 = false;
@@ -45,17 +50,21 @@ class UdsServer {
         std::chrono::steady_clock::time_point lockout_time;//锁定状态开始时间点
         std::chrono::steady_clock::time_point last_active_time; //最后一次活跃时间点
 
-        std::unordered_map<uint16_t, std::function<std::vector<uint8_t>() > > readDID;
-        
+        std::unordered_map<uint16_t, std::function<std::vector<uint8_t>() >> readFnc;//DID读取函数映射表
         std::unordered_map<SecurityLevel, std::function<uint32_t(uint32_t)>> safeFnc;
+        std::unordered_map<uint16_t, std::function<std::optional<std::vector<uint8_t>>
+        (uint8_t sub_fnc, const std::vector<uint8_t>& req_data)>> routingFnc;
+        std::unordered_map<uint16_t, std::function<bool(const std::vector<uint8_t>&)>> writeFnc;//DID写函数映射表
 
         bool isLockout();
         uint32_t getRandNum();
         void checkS3Timeout();
 
-        void handle_0x27(const std::vector<uint8_t>& req);
-        void handle_0x10(const std::vector<uint8_t>& req);
-        void handle_0x3E(const std::vector<uint8_t>& req);
-        void handle_0x22(const std::vector<uint8_t>& req);
+        void handle_0x27(const std::vector<uint8_t>& req);//发送安全请求
+        void handle_0x10(const std::vector<uint8_t>& req);//会话控制
+        void handle_0x3E(const std::vector<uint8_t>& req);//保持连接
+        void handle_0x22(const std::vector<uint8_t>& req);//读取操作
+        void handle_0x2E(const std::vector<uint8_t>& req);//写操作
+        void handle_0x31(const std::vector<uint8_t>& req);//例程控制
         void sendNRC(uint8_t sid, uint8_t nrc);
 };

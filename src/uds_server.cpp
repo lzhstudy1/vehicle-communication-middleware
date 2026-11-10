@@ -22,14 +22,20 @@ void UdsServer::handleRequest(const std::vector<uint8_t>& req){// 请求SID 子�
         case 0x27 :
             handle_0x27(req);
             break;
+        case 0x2E :
+            handle_0x2E(req);
+            break;
+        case 0x31:
+            handle_0x31(req);
+            break;
         default :
             sendNRC(sid, 0x11);
     }
     return;
 }
 
-void UdsServer::registerReadDID(uint16_t did, std::function<std::vector<uint8_t>()> readFnc){
-    readDID[did] = readFnc;
+void UdsServer::registerReadDID(uint16_t did, std::function<std::vector<uint8_t>()> read_Fnc){
+    readFnc[did] = read_Fnc;
 }
 
 void UdsServer::handle_0x10(const std::vector<uint8_t>& req){
@@ -77,9 +83,9 @@ void UdsServer::handle_0x22(const std::vector<uint8_t>& req){
         return;
     }
     uint16_t Did = (req[1] << 8) | req[2];
-    auto it = readDID.find(Did);
+    auto it = readFnc.find(Did);
 
-    if(it == readDID.end()){
+    if(it == readFnc.end()){
         sendNRC(req[0],0x31);
         return;
     }
@@ -237,4 +243,82 @@ void UdsServer::processLoop(){
         }
         checkS3Timeout();
     }
+}
+
+void UdsServer::handle_0x2E(const std::vector<uint8_t>& req){
+    if(session == Session::DEFAULT){
+        sendNRC(req[0],0x33);
+        return;
+    }
+    if(!unlock_level1 && !unlock_level3){
+    sendNRC(req[0],0x33);
+    return;
+    }
+    if(req.size() < 4){
+        sendNRC(req[0],0x13);
+        return;
+    }
+    uint16_t did = (req[1] << 8) | req[2];
+    auto it = writeFnc.find(did);
+    if(it == writeFnc.end()){
+        sendNRC(req[0],0x31);
+        return;
+    }
+    bool success = it->second(std::vector<uint8_t>(req.begin() + 3,req.end()));
+   if(!success){
+    sendNRC(req[0],0x22);
+    return;
+   }
+   std::vector<uint8_t> resp = {0x6E,req[1],req[2]};
+   sender.send(resp);
+}
+
+void UdsServer::handle_0x31(const std::vector<uint8_t>& req){
+    if(req.size() < 4){
+        sendNRC(req[0],0x13);
+        return;
+    }
+    uint8_t sub_func = req[1];
+    uint16_t rid = (req[2] << 8) | req[3];
+    if(sub_func != 0x01 && sub_func != 0x02 && sub_func != 0x03){
+        sendNRC(req[0],0x12);
+        return;
+    }
+
+    auto it = routingFnc.find(rid);
+    if(it == routingFnc.end()){
+        sendNRC(req[0],0x31);
+        return;
+    }
+
+    if(sub_func == 0x01 && routing_running){
+        sendNRC(req[0],0x24);
+        return;
+    }
+
+    std::vector<uint8_t> params = {req.begin() + 4,req.end()};
+
+    auto res = it->second(sub_func,params);
+   
+    if(res.has_value()){
+        if(sub_func == 0x01) routing_running = true;
+        if(sub_func == 0x02) routing_running = false;
+
+        std::vector<uint8_t> resp = {0x71,req[1],req[2],req[3]};
+        std::vector<uint8_t> data = res.value();
+        resp.insert(resp.end(),data.begin(),data.end());
+        sender.send(resp);
+    }else{
+        sendNRC(req[0],0x22);
+        return;
+    }
+}
+
+void UdsServer::registerRouting(uint16_t rid, std::function<std::optional<std::vector<uint8_t>>
+    (uint8_t sub_fnc, const std::vector<uint8_t>& req_data)> routing_func){
+        routingFnc[rid] = routing_func;
+}
+
+void UdsServer::registerDIDWrite(uint16_t did, std::function<bool(const std::vector<uint8_t>&)> write_func){
+    writeFnc[did] = write_func;
 }
