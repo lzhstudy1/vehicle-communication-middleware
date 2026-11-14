@@ -3,8 +3,9 @@
 #include<vector>
 #include<cstdint>
 #include<unordered_map>
-#include<vcm/isotp_sender.hpp>
-#include<vcm/IsoTpReceiver.hpp>
+#include"vcm/isotp_sender.hpp"
+#include"vcm/IsoTpReceiver.hpp"
+#include"vcm/DTC_Manager.hpp"
 #include<chrono>
 #include<functional>
 #include<optional>
@@ -27,6 +28,8 @@ class UdsServer {
         };
         SecurityLevel getSecurityLevel() const { return current_level;}
 
+        DtcManager& getDtc(){return dtc_manager;};
+
         void stop(){is_running = false;}
         void handleRequest(const std::vector<uint8_t>& req);
         void registerReadDID(uint16_t did, std::function<std::vector<uint8_t>()> readFnc);//读函数
@@ -41,6 +44,7 @@ class UdsServer {
         IsoTpReceiver& receiver;
         std::atomic<bool> is_running = {true};
         std::atomic<bool> routing_running = {false};
+        DtcManager dtc_manager;
         Session session = Session::DEFAULT;
         SecurityLevel current_level = SecurityLevel::LEVEL_1;
         bool unlock_level1 = false;
@@ -66,5 +70,7 @@ class UdsServer {
         void handle_0x22(const std::vector<uint8_t>& req);//读取操作
         void handle_0x2E(const std::vector<uint8_t>& req);//写操作
         void handle_0x31(const std::vector<uint8_t>& req);//例程控制
+        void handle_0x14(const std::vector<uint8_t>& req);//清除DTC
+        void handle_0x19(const std::vector<uint8_t>& req);//读取DTC信息
         void sendNRC(uint8_t sid, uint8_t nrc);
 };

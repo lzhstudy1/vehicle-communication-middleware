@@ -6,6 +6,7 @@ add_library(vcm_core STATIC
      isotp_sender.cpp
      IsoTpReceiver.cpp
      uds_server.cpp
+     DTC_Manager.cpp
 )
 
 target_include_directories(vcm_core PUBLIC ${CMAKE_SOURCE_DIR}/include)

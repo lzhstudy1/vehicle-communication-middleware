@@ -116,8 +116,10 @@ bool CanSocket::setFilters(const std::vector<struct can_filter>& filters) {
 
 bool CanSocket::clearFilter() {
     if (sock_ < 0) return false;
-
-    if (setsockopt(sock_, SOL_CAN_RAW, CAN_RAW_FILTER, nullptr, 0) < 0) {
+    struct can_filter rfilter;
+    rfilter.can_id = 0;
+    rfilter.can_mask = 0;
+    if (setsockopt(sock_, SOL_CAN_RAW, CAN_RAW_FILTER, &rfilter, sizeof(rfilter)) < 0) {
         perror("setsockopt CAN_RAW_FILTER clear");
         return false;
     }

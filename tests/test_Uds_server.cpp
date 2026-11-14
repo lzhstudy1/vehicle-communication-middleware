@@ -367,3 +367,60 @@ TEST_F(UdsServerTest, Handle_0x31_FanRoutine) {
     server.stop();
     if (ecu_thread.joinable()) ecu_thread.join();
 }
+
+TEST_F(UdsServerTest, handle_0x19_and_0x14) {
+    IsoTpReceiver ecu_rx(ecu_socket, 0x7E0, 0x7E8);
+    IsoTpSender ecu_tx(ecu_socket, 0x7E8, 0x7E0);
+    UdsServer server(ecu_tx, ecu_rx);
+
+    server.getDtc().reportDtc(0x005662, 0x08);
+    server.getDtc().reportDtc(0x00C100, 0x04);
+    std::thread ecu_thread([&]{ server.processLoop(); });
+     //0x19 01 查数量 
+    auto resp_count = sendRequestAndGetResponse(tester_socket, {0x19, 0x01, 0x08});
+    ASSERT_EQ(resp_count.size(), 4);
+    EXPECT_EQ(resp_count[0], 0x59);
+    EXPECT_EQ(resp_count[1], 0x01);
+    EXPECT_EQ(resp_count[3], 0x01); 
+
+    // 0x19 02 查列表 
+    auto resp_list = sendRequestAndGetResponse(tester_socket, {0x19, 0x02, 0xFF});
+    ASSERT_EQ(resp_list.size(), 11); 
+    EXPECT_EQ(resp_list[0], 0x59);
+    EXPECT_EQ(resp_list[1], 0x02);
+    EXPECT_EQ(resp_list[2], 0xFF);
+    EXPECT_EQ(resp_list[3], 0x00);
+    EXPECT_EQ(resp_list[4], 0x56);
+    EXPECT_EQ(resp_list[5], 0x62);
+    EXPECT_EQ(resp_list[6], 0x08);
+    EXPECT_EQ(resp_list[7], 0x00);
+    EXPECT_EQ(resp_list[8], 0xC1);
+    EXPECT_EQ(resp_list[9], 0x00);
+    EXPECT_EQ(resp_list[10], 0x04);
+
+    // 0x14 清除故障码 
+    auto resp_clear = sendRequestAndGetResponse(tester_socket, {0x14, 0xFF, 0xFF, 0xFF});
+    ASSERT_EQ(resp_clear.size(), 1);
+    EXPECT_EQ(resp_clear[0], 0x54); 
+
+    // 清除后再查，应该为空 
+    auto resp_empty = sendRequestAndGetResponse(tester_socket, {0x19, 0x02, 0xFF});
+    // 此时只有 3 字节头，没有 DTC 数据了
+    ASSERT_EQ(resp_empty.size(), 3); 
+    EXPECT_EQ(resp_empty[0], 0x59);
+    // NRC 异常拦截 
+    auto resp_nrc19 = sendRequestAndGetResponse(tester_socket, {0x19, 0x02});
+    ASSERT_EQ(resp_nrc19.size(), 3);
+    EXPECT_EQ(resp_nrc19[0], 0x7F);
+    EXPECT_EQ(resp_nrc19[1], 0x19);
+    EXPECT_EQ(resp_nrc19[2], 0x13);
+
+    // 14 FF 
+    auto resp_nrc14 = sendRequestAndGetResponse(tester_socket, {0x14, 0xFF});
+    ASSERT_EQ(resp_nrc14.size(), 3);
+    EXPECT_EQ(resp_nrc14[0], 0x7F);
+    EXPECT_EQ(resp_nrc14[1], 0x14);
+    EXPECT_EQ(resp_nrc14[2], 0x13);
+    server.stop();
+    if (ecu_thread.joinable()) ecu_thread.join();
+}

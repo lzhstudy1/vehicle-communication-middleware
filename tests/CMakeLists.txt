@@ -5,6 +5,8 @@ add_executable(vcm_tests
     test_ring_buffer.cpp
     test_Isotp_receive.cpp
     test_Uds_server.cpp
+    test_DTC_manager.cpp
+    test_can_socket.cpp
 )
 
 target_link_libraries(vcm_tests PRIVATE 
@@ -22,7 +24,7 @@ target_compile_options(vcm_tests PRIVATE
 )
 
 target_compile_definitions(vcm_tests PRIVATE 
-    TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/dbc"
+    TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/config"
 )
 
 add_test(NAME vcm_tests COMMAND vcm_tests)

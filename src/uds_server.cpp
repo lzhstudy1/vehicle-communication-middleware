@@ -28,6 +28,12 @@ void UdsServer::handleRequest(const std::vector<uint8_t>& req){// 请求SID 子�
         case 0x31:
             handle_0x31(req);
             break;
+        case 0x14 :
+            handle_0x14(req);
+            break;
+        case 0x19 :
+            handle_0x19(req);
+            break;
         default :
             sendNRC(sid, 0x11);
     }
@@ -321,4 +327,44 @@ void UdsServer::registerRouting(uint16_t rid, std::function<std::optional<std::v
 
 void UdsServer::registerDIDWrite(uint16_t did, std::function<bool(const std::vector<uint8_t>&)> write_func){
     writeFnc[did] = write_func;
+}
+
+void UdsServer::handle_0x14(const std::vector<uint8_t>& req){
+    if(req.size() != 4) {sendNRC(req[0],0x13); return;}
+    dtc_manager.clearAllDtc();
+    sender.send({0x54});
+}
+
+void UdsServer::handle_0x19(const std::vector<uint8_t>& req){
+    if(req.size() < 3){
+        sendNRC(req[0],0x13);
+        return;
+    }
+    uint8_t sub_func = req[1];
+    switch(sub_func){
+        case 0x01 : {//读取DTC数量
+            uint8_t mask = req[2];
+            size_t DtcCount = dtc_manager.getDtcCount(mask);
+            std::vector<uint8_t> resp = {0x59,sub_func,mask,static_cast<uint8_t>(DtcCount & 0xFF)};
+            sender.send(resp);
+            break;
+        }
+        case 0x02 : {//读取DTC列表
+            uint8_t mask = req[2];
+            std::vector<DtcRecord> DTClist = dtc_manager.getDtcList(mask);
+            std::vector<uint8_t> resp = {0x59,sub_func,mask};
+            for(size_t i = 0; i < DTClist.size();++i){
+                uint32_t code = DTClist[i].code;
+                resp.push_back((code >> 16) & 0xFF);
+                resp.push_back((code >> 8) & 0xFF);
+                resp.push_back(code & 0xFF);
+                resp.push_back(DTClist[i].status);
+            }
+            sender.send(resp);
+            break;
+        }
+        default:
+            sendNRC(req[0],0x12);
+            return;
+    }
 }
