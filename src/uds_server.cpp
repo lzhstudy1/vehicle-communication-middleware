@@ -1,43 +1,34 @@
 #include"vcm/uds_server.hpp"
 #include<fstream>//从底层硬件获得熵随机数
 #include<iostream>
+#include<thread>
+#include<future>
 
 UdsServer::UdsServer(IsoTpSender& sender, IsoTpReceiver& receiver):
     sender(sender), receiver(receiver){};
 
+void UdsServer::registerServerMap(){
+    server_map[0x10] = [this](const std::vector<uint8_t>&req){handle_0x10(req);};
+    server_map[0x3E] = [this](const std::vector<uint8_t>&req){handle_0x3E(req);};
+    server_map[0x22] = [this](const std::vector<uint8_t>&req){handle_0x22(req);};
+    server_map[0x27] = [this](const std::vector<uint8_t>&req){handle_0x27(req);};
+    server_map[0x2E] = [this](const std::vector<uint8_t>&req){handle_0x2E(req);};
+    server_map[0x31] = [this](const std::vector<uint8_t>&req){handle_0x31(req);};
+    server_map[0x14] = [this](const std::vector<uint8_t>&req){handle_0x14(req);};
+    server_map[0x19] = [this](const std::vector<uint8_t>&req){handle_0x19(req);};
+}
+
 void UdsServer::handleRequest(const std::vector<uint8_t>& req){// 请求SID 子功能(可选) 数据
     last_active_time = std::chrono::steady_clock::now();
-    if(req.size() == 0) return;
+    if(req.empty())return;
+    
     uint8_t sid = req[0];
-    switch(sid){
-        case 0x10 :
-            handle_0x10(req);
-            break;
-        case 0x3E :
-            handle_0x3E(req);
-            break;
-        case 0x22 :
-            handle_0x22(req);
-            break;
-        case 0x27 :
-            handle_0x27(req);
-            break;
-        case 0x2E :
-            handle_0x2E(req);
-            break;
-        case 0x31:
-            handle_0x31(req);
-            break;
-        case 0x14 :
-            handle_0x14(req);
-            break;
-        case 0x19 :
-            handle_0x19(req);
-            break;
-        default :
-            sendNRC(sid, 0x11);
+    auto it = server_map.find(sid);
+    if(it != server_map.end()){
+        it->second(req);
+    }else{
+        sendNRC(sid,0x11);
     }
-    return;
 }
 
 void UdsServer::registerReadDID(uint16_t did, std::function<std::vector<uint8_t>()> read_Fnc){
@@ -51,16 +42,26 @@ void UdsServer::handle_0x10(const std::vector<uint8_t>& req){
     }
     uint8_t sub_func = req[1] & 0x7F;
     switch(sub_func){
-        case 0x01 :
+        case 0x01 :{
         session = Session::DEFAULT;
+        current_level = SecurityLevel::LEVEL_1;
+        unlock_level1 = false;
+        unlock_level3 = false;
+        }
         break;
 
-        case 0x02 :
+        case 0x02 :{
         session = Session::PROGRAMMING;
+        unlock_level1 = false;
+        unlock_level3 = false;
+        }
         break;
 
-        case 0x03 :
+        case 0x03 :{
         session = Session::EXTENDED;
+        unlock_level1 = false;
+        unlock_level3 = false;
+        }
         break;
 
         default:
@@ -148,6 +149,7 @@ void UdsServer::checkS3Timeout(){
         current_level = SecurityLevel::LEVEL_1;
         unlock_level1 = false;
         unlock_level3 = false;
+        routing_running = false;
         std::cout<<"[UDS] Session 3 timeout"<<std::endl;
     }
 }
@@ -174,7 +176,7 @@ void UdsServer::handle_0x27(const std::vector<uint8_t>& req){
         return;
     }
 
-    if(isLockout()){
+    if(isLockout()){//强制锁定
         sendNRC(req[0],0x36);
         return;
     }
@@ -306,7 +308,7 @@ void UdsServer::handle_0x31(const std::vector<uint8_t>& req){
 
     auto res = it->second(sub_func,params);
    
-    if(res.has_value()){
+    if(res.has_value()){//短任务
         if(sub_func == 0x01) routing_running = true;
         if(sub_func == 0x02) routing_running = false;
 
@@ -315,7 +317,7 @@ void UdsServer::handle_0x31(const std::vector<uint8_t>& req){
         resp.insert(resp.end(),data.begin(),data.end());
         sender.send(resp);
     }else{
-        sendNRC(req[0],0x22);
+        //长任务或者没有executeAsyncTask已经在执行了
         return;
     }
 }
@@ -367,4 +369,32 @@ void UdsServer::handle_0x19(const std::vector<uint8_t>& req){
             sendNRC(req[0],0x12);
             return;
     }
+}
+
+//在registerRouting内部调用用于长任务
+//是否为长任务需要工程师自己判断
+void UdsServer::executeAsyncTask(uint16_t sid,std::function<std::vector<uint8_t>()> longTimeTask){
+    /*
+        异步任务调度逻辑使用std::thread与std::async实现
+        构建std::launch::async，然后move到线程中执行
+        通过std::future::get()异步结果并且结束
+        通过std::future_status::ready判断是否发送NRC0x78
+    */
+    sendNRC(sid,0x78);
+    
+    auto task_future = std::async(std::launch::async,longTimeTask);//const类型需要mutable捕获
+    std::thread Task([this,&sid,task_future = std::move(task_future)]()mutable{
+        auto status_ = task_future.wait_for(std::chrono::seconds(4));//给p2留出余量
+        while(status_ != std::future_status::ready){
+            sendNRC(sid,0x78);//响应挂起，别掉线
+            status_ = task_future.wait_for(std::chrono::seconds(4));
+        }
+        std::vector<uint8_t> resp = task_future.get();
+        if(!resp.empty()){
+            sender.send(resp);
+        }else{
+            sendNRC(sid,0x22);
+        }
+    });
+    Task.detach();
 }

@@ -10,8 +10,8 @@
 #include<thread>
 #include<iomanip>
 
-constexpr uint32_t TX_ID = 0x7E0;
-constexpr uint32_t RX_ID = 0x7E8;
+constexpr uint32_t ECU_TX_ID = 0x7E0;
+constexpr uint32_t ECU_RX_ID = 0x7E8;
 
 void printData(std::vector<uint8_t>& data){
     for(auto b : data){
@@ -40,8 +40,8 @@ int main(){
     }
     LOG_INFO("can总线打开成功");
 
-    IsoTpSender sender(tester_socket,TX_ID,RX_ID);
-    IsoTpReceiver receiver(ecu_socket,TX_ID,RX_ID);
+    IsoTpSender sender(tester_socket,ECU_TX_ID,ECU_RX_ID);
+    IsoTpReceiver receiver(ecu_socket,ECU_RX_ID,ECU_TX_ID);
     std::vector<uint8_t> diagnostic_request = {
         0x10, 0x14, 0x2E, 0xF1, 0x90, 0x31, 0x32, 
         0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39,

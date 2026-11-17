@@ -22,7 +22,7 @@ class IsoTpReceiver{//接收方
             uint32_t rx_id_;
             uint32_t tx_id_;
             //rx_id我要接听什么标签的帧
-            //tx_id 我发送的数据需要什么id
+            //tx_id 我发送的数据需要是id
             
             uint8_t buffer[MemoryPoolSize];//存放拼装的数据
             int total_length = 0;//总长度

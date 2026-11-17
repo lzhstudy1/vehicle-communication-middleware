@@ -38,6 +38,7 @@ class UdsServer {
         void registerRouting(uint16_t rid, std::function<std::optional<std::vector<uint8_t>>
             (uint8_t sub_fnc, const std::vector<uint8_t>& req_data)> routing_func);
         void registerDIDWrite(uint16_t did, std::function<bool(const std::vector<uint8_t>&)> write_func);//写函数
+        void executeAsyncTask(uint16_t sid, std::function<std::vector<uint8_t>()> longTimeTask);
 
     private:
         IsoTpSender& sender;
@@ -59,10 +60,12 @@ class UdsServer {
         std::unordered_map<uint16_t, std::function<std::optional<std::vector<uint8_t>>
         (uint8_t sub_fnc, const std::vector<uint8_t>& req_data)>> routingFnc;
         std::unordered_map<uint16_t, std::function<bool(const std::vector<uint8_t>&)>> writeFnc;//DID写函数映射表
+        std::unordered_map<uint8_t, std::function<void(const std::vector<uint8_t>&)>> server_map;
 
         bool isLockout();
         uint32_t getRandNum();
         void checkS3Timeout();
+        void registerServerMap();
 
         void handle_0x27(const std::vector<uint8_t>& req);//发送安全请求
         void handle_0x10(const std::vector<uint8_t>& req);//会话控制
